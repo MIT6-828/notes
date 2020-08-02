@@ -335,3 +335,15 @@ runcmd(struct cmd *cmd)
   _exit(0);
 }
 ```
+
+# lab2
+
+# how GDT is initialized?
+
+The LGDT instruction loads a linear base address and limit value from a six-byte data operand in memory into the GDTR: https://pdos.csail.mit.edu/6.828/2018/readings/i386/LGDT.htm.
+
+A bit clarify about whether the operand is 16-bit or 32-bit, normally, in read mode and a `.code16` section the operand is 16 bit, otherwise it's 32 bit. An instruction prefix can be used to change this behavior: http://web.mit.edu/rhel-doc/3/rhel-as-en-3/i386-prefixes.html.
+
+In JOS source code, when the LGDT instruction is called to load the GDT, it's in 16 bit<sup>1</sup>, so the LGDT instruction will only use the first 5 bytes of the 6-byte data.
+
+1. you can change the source code of `boot.S` to add an `addr32` prefix to the `lgdt    gdtdesc` instruction and compare the generated asm `obj/boot/boot.asm`
