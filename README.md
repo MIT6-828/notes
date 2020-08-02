@@ -266,7 +266,7 @@ After this `call` instruction, the address 7d7d is pushed into the stack address
 ```
 
 ---
-#lecture 3
+# lecture 3
 
 # Homework 2
 
