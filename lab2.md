@@ -151,3 +151,11 @@ pde_t entry_pgdir[NPDENTRIES] = {
 ```
 
 Step back to the first question, what the purpose of passing true to `only_low_memory` and make the directory 0 pages ahead and reset the `page_free_list` head if we don't need it to have the check_page_free_list() passed? The answer is this is for the check_page_alloc() check. In check_page_alloc() the `page_alloc()` method will beb called to allocate some physical pages(definitely won't exceed 1024 pages), if the `page_free_list` points to a higher addressed page and our `page_alloc()` is implemented without looking up the lowest page first, then the new allocated page will probably not in the directory 0 and then cause the MMU to trap.
+
+# Why keep getting sig trap fault?
+
+I encountered many times of trap fault during setting up the page table, I made these faults because I'm not very clear about the page table entry at first. I spent some time to understand the mechanism and finally resolved all the faults, and I also find a single tip which can help us avoid the faults, always keep in mind of this tip:
+
+1. Each page directory entry is the `or` result of a physical page's adress and the privilege bits, thus the final entry value is not page aligned.
+2. So does the page table entry.
+3. When we are getting an address to a page table entry(as in `pgdir_walk()`), we need to strip the privilege bits and convert it to virtual address.
