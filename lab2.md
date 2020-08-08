@@ -126,7 +126,7 @@ if (only_low_memory) {
 
 The reason we need to set the directory 0 pages as page_free_list head is unclear to me, we actually needn't to do this to make the check passed, but we do need to ensure the `pdx_limit` is 1 in the following part to prohibit the checking of the pages in directory >= 1, because in `kern/entrypgdir.c` we only map the 1st directory, i.e. the MMU only able to map the vritual address that corresponds to the first 1024 batch of physical pages now. The `memset(page2kva(pp), 0x97, 128)` call is to cause a memory access instruction and test whether MMU can succesfully translate the virtual address and access the physical memory, for other addresses MMU are unable to recongize and will cause sigtrap fault.
 
-> NOTE Actually the `kern/entrypgdir.c` also maps the 58th page, this is the page the KERNBASE exists, 58 is derived from KERNBASE>>PDXSHIFT, this part only checks the accessbility for the first page. As in lab2 our physical memory is just 128MB(the highest physical address is 0x7fffff), KERNBASE(0xf0000000), if regarded as physical adress, means nearly 4G space, the pages list certainly doesn't have that many pages to reach to 4G.
+> NOTE Actually the `kern/entrypgdir.c` also maps the 928th page, this is the page the KERNBASE exists, 928 is derived from KERNBASE>>PDXSHIFT, this part only checks the accessbility for the first page. As in lab2 our physical memory is just 128MB(the highest physical address is 0x7fffff), KERNBASE(0xf0000000), if regarded as physical adress, means nearly 4G space, the pages list certainly doesn't have that many pages to reach to 4G.
 
 ```
     // if there's a page that shouldn't be on the free list,
