@@ -159,3 +159,5 @@ I encountered many times of trap fault during setting up the page table, I made 
 1. Each page directory entry is the `or` result of a physical page's adress and the privilege bits, thus the final entry value is not page aligned.
 2. So does the page table entry.
 3. When we are getting an address to a page table entry(as in `pgdir_walk()`), we need to strip the privilege bits and convert it to virtual address.
+
+# Why we can access non-exist physical memory?
