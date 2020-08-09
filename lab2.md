@@ -221,8 +221,6 @@ I encountered many times of trap fault during setting up the page table, I made 
 2. So does the page table entry.
 3. When we are getting an address to a page table entry(as in `pgdir_walk()`), we need to strip the privilege bits and convert it to virtual address.
 
-# Why we can access non-exist physical memory?
-
 # Question 1 - 6
 
 ## 1
@@ -238,7 +236,11 @@ All pointers we get in C point to virtual address, so `value` is actually a uint
 
 ## 2
 
-here's the output of the `info pg` command of the patched QEMU:
+here's the output of the `info pg` command of the patched QEMU. In this output each "VPN range" usually represents a 4MB virtual address space, since every 4MB space shares a same page directory entry. While if the virtual address space and the physical address space are mapped continously, they will be shown in "compressed" manner.
+
+> this `info pg` command is a command of MIT 6.828 patched QEMU, its implementation can be refered to these two commits:
+> 1. https://github.com/mit-pdos/6.828-qemu/commit/125a4a8ded8fb0c5d9232b0ce279f4e20aa7a73b
+> 2. https://github.com/mit-pdos/6.828-qemu/commit/1094e32b9b9b06d026afd31ff466142bf0340cf7
 
 ```
 VPN range     Entry         Flags        Physical page
@@ -274,6 +276,24 @@ VPN range     Entry         Flags        Physical page
   [f0400-fffff]  PTE[000-3ff] --------WP 00400-0ffff
 ```
 
+The first range `[ef000-ef3ff]` is where the UPAGES in, we map the UPAGES using `boot_map_region(kern_pgdir, UPAGES, npages * sizeof *pages, PADDR(pages), PTE_U);` in the `mem_init()`, the size of all the page info structures is `npages * sizeof *pages`, which is 256KB if you print this value in code, 256KB corresponds to 64 pages, so 64 physical pages are allocated, and the corresponding page table's `000 ~ 03f` entries are filled.
+
+> NOTE the size of a single PageInfo structure, if you look at its definition, looks like 6 bytes, but C compiler will append 2 extra bytes to make the structure word aligned.
+
+The second range `[ef400-ef7ff]` is another 4MB space, its index in page directory is `0x3bd`. The first 4 entries of the page table map to 4 physical pages that are not continous so they are shown "uncompressed". It's mapped by `kern_pgdir[PDX(UVPT)] = PADDR(kern_pgdir) | PTE_U | PTE_P;` in the beginning of `mem_init()`.
+
+Then it comes the kernel stack part, we map the kernel stack using `boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);` also in `mem_init()`, in which `KSTACKTOP` is `0xf000000` and `KTSTKSIZE` is 8 pages, so even though in the range of `[efc00-effff]`, it's only `[efff8-effff]`(corresponds virtual address `0xefff8000 ~ 0xeffffff`) is mapped. The page directory index is `3bf` and in the page table, 8 entries is filled.
+
+The last one is the mapping of the kernel space, the kernel space is 256MB, `[f0000-f03ff]` is its first 4MB space, it shows "uncompressed" as it's mapped scattered, `[f0400-fffff]` is the remaining 252MB, it shows compressed because all of this range map to continous physical address range. The page directory index for this range is from `3c1` to `3ff`, for each page directory, the entries of the corresponding page table is from `000` to `3ff`(1024 entries) and also show in "compressed".
+
+While do note that we only have 128MB physical address, this can only serve up to the `0xf7ffffff` address of the kernel space, though we also mapped `0xf8000000 ~ 0xffffffff`, there's no correspond physical page for it. Acutally we cannot even serve up to `0xf7ffffff` because as we seen above a lot of physical pages are used to:
+
+1. map other ranges
+2. used to store the PageInfo structures
+3. some physical pages cannot even been used because they are used to storing the kernel's code and data.
+
+It's interesting to access a virtual address which has no physical page mapped, I will talk more about this later.
+
 ## 3
 
 See above `info pg` output, the pages in kernel space (0xF0000000 above) are not with `U` permission bit, ensuring the user cannot access these pages.
@@ -299,3 +319,8 @@ boot_map_region(kern_pgdir, KERNBASE, (2^32)-KERNBASE, 0, PTE_W);
 The first two `boot_map_region()` calls allocate 48(192KB/4KB) and 8 physical pages respectively, so add up to `56 * 4KB = 224KB`. 
 
 It's easy to get that if we have a full 4GB physicall memory the overhead for this is `6MB`.
+
+# Why we can access non-exist physical memory?
+
+1. using `memset()`?
+2. using dereference and assignment directly? `*addr = value`
