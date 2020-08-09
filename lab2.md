@@ -1,3 +1,64 @@
+# how GDT is initialized?
+
+The LGDT instruction loads a linear base address and limit value from a six-byte data operand in memory into the GDTR: https://pdos.csail.mit.edu/6.828/2018/readings/i386/LGDT.htm.
+
+A bit clarify about whether the operand is 16-bit or 32-bit, normally, in read mode and a `.code16` section the operand is 16 bit, otherwise it's 32 bit. An instruction prefix can be used to change this behavior: http://web.mit.edu/rhel-doc/3/rhel-as-en-3/i386-prefixes.html.
+
+In JOS source code, when the LGDT instruction is called to load the GDT, it's in 16 bit<sup>1</sup>, so the LGDT instruction will only use the first 5 bytes of the 6-byte data. The 5 bytes is, as the code shown, pointed by the `gdtdesc` label:
+
+```
+ 61   # Switch from real to protected mode, using a bootstrap GDT
+ 62   # and segment translation that makes virtual addresses
+ 63   # identical to their physical addresses, so that the
+ 64   # effective memory map does not change during the switch.
+ 65   lgdt    gdtdesc
+ 66     7c1e:   0f 01 16                lgdtl  (%esi)
+ 67     7c21:   64 7c 0f                fs jl  7c33 <protcseg+0x1>
+ ...
+ ...
+112 00007c4c <gdt>:
+113     ...
+114     7c54:   ff                      (bad)
+115     7c55:   ff 00                   incl   (%eax)
+116     7c57:   00 00                   add    %al,(%eax)
+117     7c59:   9a cf 00 ff ff 00 00    lcall  $0x0,$0xffff00cf
+118     7c60:   00                      .byte 0x0
+119     7c61:   92                      xchg   %eax,%edx
+120     7c62:   cf                      iret
+121     ...
+122
+123 00007c64 <gdtdesc>:
+124     7c64:   17                      pop    %ss
+125     7c65:   00 4c 7c 00             add    %cl,0x0(%esp,%edi,2)
+ ```
+ 
+So `0x0017` will be regarded as the limit part and `0x007c4c` will be regarded as the address of the GDT table, these two parts are then loaded into the GDTR register.
+
+Note that `0x17` is the size of the gdt table minus 1, since it is to represent the end address of the table, so we know that the 24 bytes from `0x00007c4c` is the content of the GDT table, we should also know that each entry in GDT table is 8 bytes, so this table contains 3 entries, they are NULL, code and data entries respectively as the comments indicated in `boot.S`.
+
+```
+ 75 # Bootstrap GDT
+ 76 .p2align 2                                # force 4 byte alignment
+ 77 gdt:
+ 78   SEG_NULL              # null seg
+ 79   SEG(STA_X|STA_R, 0x0, 0xffffffff) # code seg
+ 80   SEG(STA_W, 0x0, 0xffffffff)           # data seg
+ ```
+ 
+In lab1 we knew that the `ljmp    $0x8, $0x7c32` jumped the code in 32-bit mode, while if you paid attention to the value of the EIP register in gdb, you would see the value of the EIP register was `0x7c32`, no address offset was added to it. So does it mean the base address in the GDT table is 0, yes it is.
+
+If we examine the exact content in the GDT table, we can check the content of address `0x7c4c` in GDB or QEMU console, we just need to check 24 bytes, you should get the following result:
+
+```
+(qemu) x/8x 0x7c4c
+00007c4c: 0x00000000 0x00000000 0x0000ffff 0x00cf9a00
+00007c5c: 0x0000ffff 0x00cf9200 0x7c4c0017 0xf7ba0000
+```
+
+the first 8 bytes is the NULL entry, the second 8 bytes is the code segmenet descriptor, if you put the value to a descriptor entry described in https://pdos.csail.mit.edu/6.828/2018/readings/i386/s05_01.htm#fig5-3, you will see this code segment's base address is 0. So this JOS just set a GDT table which maps the logical address to linear address without any changes.
+
+1. you can change the source code of `boot.S` to add an `addr32` prefix to the `lgdt    gdtdesc` instruction and compare the generated asm `obj/boot/boot.asm`
+
 # How page table is initialized?
 
 Page table is initialized right after entering kernel, in `kern/entry.S`, it loads the address of `entry_dir` defined in `kern/entrypgdir.c` into cr3 and then enables the PG bit of cr0.
