@@ -320,6 +320,12 @@ The first two `boot_map_region()` calls allocate 48(192KB/4KB) and 8 physical pa
 
 It's easy to get that if we have a full 4GB physicall memory the overhead for this is `6MB`.
 
+## 6
+
+What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE?
+
+It's possible because we also mapped the virtual address range `[0, 0x3fffff)` to the physical address range `[0, 0x3fffff)`, which is the load address range of the kernel.
+
 # Why we can access non-exist physical memory?
 
 1. using `memset()`?
