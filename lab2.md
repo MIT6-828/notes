@@ -222,3 +222,80 @@ I encountered many times of trap fault during setting up the page table, I made 
 3. When we are getting an address to a page table entry(as in `pgdir_walk()`), we need to strip the privilege bits and convert it to virtual address.
 
 # Why we can access non-exist physical memory?
+
+# Question 1 - 6
+
+## 1
+
+```
+mystery_t x;
+char* value = return_a_pointer();
+*value = 10;
+x = (mystery_t) value;
+```
+
+All pointers we get in C point to virtual address, so `value` is actually a uintptr_t type, hence x is uintptr_t type too.
+
+## 2
+
+here's the output of the `info pg` command of the patched QEMU:
+
+```
+VPN range     Entry         Flags        Physical page
+[ef000-ef3ff]  PDE[3bc]     -------UWP
+  [ef000-ef03f]  PTE[000-03f] -------U-P 0011a-00159
+[ef400-ef7ff]  PDE[3bd]     -------U-P
+  [ef7bc-ef7bc]  PTE[3bc]     -------UWP 003fd
+  [ef7bd-ef7bd]  PTE[3bd]     -------U-P 00119
+  [ef7bf-ef7bf]  PTE[3bf]     -------UWP 003fe
+  [ef7c0-ef7c0]  PTE[3c0]     ----A--UWP 003ff
+  [ef7c1-ef7ff]  PTE[3c1-3ff] -------UWP 003fc 003fb 003fa 003f9 003f8 003f7 ..
+[efc00-effff]  PDE[3bf]     -------UWP
+  [efff8-effff]  PTE[3f8-3ff] --------WP 0010e-00115
+[f0000-f03ff]  PDE[3c0]     ----A--UWP
+  [f0000-f0000]  PTE[000]     --------WP 00000
+  [f0001-f009f]  PTE[001-09f] ---DA---WP 00001-0009f
+  [f00a0-f00b7]  PTE[0a0-0b7] --------WP 000a0-000b7
+  [f00b8-f00b8]  PTE[0b8]     ---DA---WP 000b8
+  [f00b9-f00ff]  PTE[0b9-0ff] --------WP 000b9-000ff
+  [f0100-f0100]  PTE[100]     ----A---WP 00100
+  [f0101-f0101]  PTE[101]     --------WP 00101
+  [f0102-f0104]  PTE[102-104] ----A---WP 00102-00104
+  [f0105-f0114]  PTE[105-114] --------WP 00105-00114
+  [f0115-f0115]  PTE[115]     ---DA---WP 00115
+  [f0116-f0117]  PTE[116-117] --------WP 00116-00117
+  [f0118-f0119]  PTE[118-119] ---DA---WP 00118-00119
+  [f011a-f011a]  PTE[11a]     ----A---WP 0011a
+  [f011b-f011b]  PTE[11b]     ---DA---WP 0011b
+  [f011c-f0159]  PTE[11c-159] ----A---WP 0011c-00159
+  [f015a-f03bd]  PTE[15a-3bd] ---DA---WP 0015a-003bd
+  [f03be-f03ff]  PTE[3be-3ff] --------WP 003be-003ff
+[f0400-fffff]  PDE[3c1-3ff] -------UWP
+  [f0400-fffff]  PTE[000-3ff] --------WP 00400-0ffff
+```
+
+## 3
+
+See above `info pg` output, the pages in kernel space (0xF0000000 above) are not with `U` permission bit, ensuring the user cannot access these pages.
+
+For more detail https://pdos.csail.mit.edu/6.828/2018/readings/i386/s06_04.htm.
+
+## 4
+
+The maximum amount of physical memory this operating system can support is 4GB, this is the largest of the x86 addressing capability.
+
+## 5
+
+The current system in lab2 got a total of 128MB physical memory, this splits to 32768 pages so we need the same number of the `struct PageInfo` to hold them, according to its definition, a `struct PageInfo` will occupy 6 bytes, so this part costs `32768 * 6 / 1024 = 192 KB` (192KB is multiple of 4KB so no roundup needed here), this part is allocated by `boot_alloc(npages * sizeof *pages);` in the `mem_init()` function. 
+
+In addition, we need a bunch of physical pages to hold the page directory and page tables, each of these are 4KB size. Page directory is allocated by `boot_alloc(PGSIZE)` as well at the beginning of `mem_init()`. The page tables are allocated during the `boot_map_region` calls afterwards.
+
+```
+boot_map_region(kern_pgdir, UPAGES, npages * sizeof *pages, PADDR(pages), PTE_U);
+boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
+boot_map_region(kern_pgdir, KERNBASE, (2^32)-KERNBASE, 0, PTE_W);
+```
+
+The first two `boot_map_region()` calls allocate 48(192KB/4KB) and 8 physical pages respectively, so add up to `56 * 4KB = 224KB`. 
+
+It's easy to get that if we have a full 4GB physicall memory the overhead for this is `6MB`.
