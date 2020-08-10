@@ -338,3 +338,7 @@ It's possible because we also mapped the virtual address range `[0, 0x3fffff)` t
 
 1. using `memset()`?
 2. using dereference and assignment directly? `*addr = value`
+
+# Challenges
+
+TBD.
