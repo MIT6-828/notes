@@ -306,9 +306,9 @@ The maximum amount of physical memory this operating system can support is 4GB, 
 
 ## 5
 
-The current system in lab2 got a total of 128MB physical memory, this splits to 32768 pages so we need the same number of the `struct PageInfo` to hold them, according to its definition, a `struct PageInfo` will occupy 6 bytes, so this part costs `32768 * 6 / 1024 = 192 KB` (192KB is multiple of 4KB so no roundup needed here), this part is allocated by `boot_alloc(npages * sizeof *pages);` in the `mem_init()` function. 
+The current system in lab2 got a total of 128MB physical memory, this splits to 32768 pages so we need the same number of the `struct PageInfo` to hold them, we have discussed in question ##2 that a `struct PageInfo` will occupy 8 bytes, so this part costs `32768 * 8 / 1024 = 256 KB` which is 64 physical pages, this part is allocated by `boot_alloc(npages * sizeof *pages);` in the `mem_init()` function.
 
-In addition, we need a bunch of physical pages to hold the page directory and page tables, each of these are 4KB size. Page directory is allocated by `boot_alloc(PGSIZE)` as well at the beginning of `mem_init()`. The page tables are allocated during the `boot_map_region` calls afterwards.
+In addition, we need a bunch of physical pages to hold the page directory and page tables, the page directory is allocated by `boot_alloc(PGSIZE)` as well at the beginning of `mem_init()`. The page tables are allocated during the `boot_map_region` calls afterwards.
 
 ```
 boot_map_region(kern_pgdir, UPAGES, npages * sizeof *pages, PADDR(pages), PTE_U);
@@ -316,9 +316,17 @@ boot_map_region(kern_pgdir, KSTACKTOP-KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_
 boot_map_region(kern_pgdir, KERNBASE, (2^32)-KERNBASE, 0, PTE_W);
 ```
 
-The first two `boot_map_region()` calls allocate 48(192KB/4KB) and 8 physical pages respectively, so add up to `56 * 4KB = 224KB`. 
+These 3 `boot_map_region()` calls, as we can seen in question ##2, result in 66 physical pages allocated for using as page tables, so add up to 264KB.
 
-It's easy to get that if we have a full 4GB physicall memory the overhead for this is `6MB`.
+```
+[ef000-ef3ff]  PDE[3bc]           1
+[ef400-ef7ff]  PDE[3bd]           1
+[efc00-effff]  PDE[3bf]           1
+[f0000-f03ff]  PDE[3c0]           1
+[f0400-fffff]  PDE[3c1-3ff]       62
+```
+
+If we got 4GB physical memory and with all pages in this 4GB range mapped, then the count of `struct PageInfo` will be `4GB/4KB = 1048576`, which occupies `1048576 * 8 / 1024 / 1024 = 8MB` memory. And the number of page directory page plus page tables page will be 1025, with each page 4KB this add up to 4MB. So totally the memory costs for managing 4GB space is 12MB.
 
 ## 6
 
